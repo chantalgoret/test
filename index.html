@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mandelbrot Fractal with FM Synthesis</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize Three.js
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas') });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Initialize Web Audio API
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const carrier = audioContext.createOscillator();
+        const modulator = audioContext.createOscillator();
+        const filter = audioContext.createBiquadFilter();
+        const gain = audioContext.createGain();
+
+        carrier.type = 'sine';
+        modulator.type = 'sine';
+        carrier.frequency.setValueAtTime(440, audioContext.currentTime);
+        modulator.frequency.setValueAtTime(220, audioContext.currentTime); // Base frequency for modulation
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(1000, audioContext.currentTime);
+        filter.Q.setValueAtTime(10, audioContext.currentTime); // Resonance
+
+        gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+
+        // FM Modulation setup
+        modulator.connect(carrier.frequency);
+        carrier.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioContext.destination);
+
+        carrier.start();
+        modulator.start();
+
+        // Define Mandelbrot fractal calculation
+        function mandelbrot(x, y, maxIter) {
+            let real = x;
+            let imag = y;
+            let iteration = 0;
+
+            while (iteration < maxIter) {
+                const real2 = real * real;
+                const imag2 = imag * imag;
+                if (real2 + imag2 > 4) break;
+
+                imag = 2 * real * imag + y;
+                real = real2 - imag2 + x;
+                iteration++;
+            }
+            return iteration;
+        }
+
+        // Create Mandelbrot geometry
+        const geometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const colors = [];
+
+        for (let i = 0; i < 10000; i++) {
+            const x = (Math.random() - 0.5) * 4;
+            const y = (Math.random() - 0.5) * 4;
+            const iteration = mandelbrot(x, y, 100);
+
+            // Color based on iteration
+            const color = new THREE.Color(iteration / 100, iteration / 100, iteration / 100);
+            colors.push(color.r, color.g, color.b);
+
+            // Convert Mandelbrot to 3D points (with z as iteration count)
+            vertices.push(x, y, iteration / 10 - 5);
+        }
+
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        // Create a material and mesh
+        const material = new THREE.PointsMaterial({ size: 0.1, vertexColors: true });
+        const mandelbrotMesh = new THREE.Points(geometry, material);
+        scene.add(mandelbrotMesh);
+
+        // Camera position
+        camera.position.z = 10;
+
+        // Animation parameters
+        let colorShift = 0;
+        let modulatorFrequency = 220; // Base frequency for modulation
+        let filterFrequency = 1000;
+        let filterResonance = 10;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Rotate and update Mandelbrot
+            mandelbrotMesh.rotation.x += 0.01;
+            mandelbrotMesh.rotation.y += 0.01;
+
+            // Update color dynamically
+            colorShift += 0.01;
+            const r = Math.sin(colorShift) * 0.5 + 0.5;
+            const g = Math.sin(colorShift + Math.PI / 3) * 0.5 + 0.5;
+            const b = Math.sin(colorShift + Math.PI / 1.5) * 0.5 + 0.5;
+            material.color.setRGB(r, g, b);
+
+            // Update sound parameters dynamically
+            modulatorFrequency = 220 + Math.sin(colorShift) * 220;
+            carrier.frequency.setValueAtTime(modulatorFrequency, audioContext.currentTime);
+            modulator.frequency.setValueAtTime(modulatorFrequency * 2, audioContext.currentTime); // FM modulation frequency
+
+            filterFrequency = 1000 + (Math.sin(mandelbrotMesh.rotation.x) * 500);
+            filter.frequency.setValueAtTime(filterFrequency, audioContext.currentTime);
+
+            filterResonance = 10 + Math.abs(Math.sin(mandelbrotMesh.rotation.y) * 20);
+            filter.Q.setValueAtTime(filterResonance, audioContext.currentTime);
+
+            // Render the scene
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+    </script>
+</body>
+</html>
